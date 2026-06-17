@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using HuntAndPeck.ViewModels;
 using System.Linq;
+using System.Diagnostics;
 using HuntAndPeck.Services;
 using HuntAndPeck.Views;
 using HuntAndPeck.NativeMethods;
@@ -14,8 +15,21 @@ namespace HuntAndPeck
     {
         private readonly SingleLaunchMutex _singleLaunchMutex = new SingleLaunchMutex();
         private readonly UiAutomationHintProviderService _hintProviderService = new UiAutomationHintProviderService();
+
         private readonly HintLabelService _hintLabelService = new HintLabelService();
         private KeyListenerService _keyListenerService;
+
+        public App()
+        {
+            // Safety net: an interaction with another app's UI (e.g. invoking a stale
+            // UI Automation element) can throw from a background dispatcher callback.
+            // Log and swallow rather than letting it terminate the whole app.
+            DispatcherUnhandledException += (sender, args) =>
+            {
+                Debug.WriteLine("Unhandled exception: " + args.Exception);
+                args.Handled = true;
+            };
+        }
 
         private void ShowOverlay(OverlayViewModel vm)
         {
@@ -24,6 +38,7 @@ namespace HuntAndPeck
                 DataContext = vm
             };
             vm.CloseOverlay = () => view.Close();
+            view.Closed += (s, e) => vm.Closed?.Invoke();
             view.Show();
         }
 

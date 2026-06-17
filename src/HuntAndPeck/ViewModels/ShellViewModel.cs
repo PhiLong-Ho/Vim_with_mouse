@@ -63,24 +63,52 @@ namespace HuntAndPeck.ViewModels
         public DelegateCommand ShowOptionsCommand { get; }
         public DelegateCommand ExitCommand { get; }
 
+        /// <summary>
+        /// True while a hint overlay is being prepared or shown. Used to ignore
+        /// repeated hotkey presses instead of stacking multiple overlays.
+        /// </summary>
+        private bool _overlayActive;
+
         private void _keyListener_OnHotKeyActivated(object sender, EventArgs e)
         {
+            if (_overlayActive)
+            {
+                return;
+            }
+            _overlayActive = true;
+
             var session = _hintProviderService.EnumHints();
             if (session != null)
             {
                 var vm = new OverlayViewModel(session, _hintLabelService);
+                vm.Closed = () => _overlayActive = false;
                 _showOverlay(vm);
+            }
+            else
+            {
+                _overlayActive = false;
             }
         }
 
         private void _keyListener_OnTaskbarHotKeyActivated(object sender, EventArgs e)
         {
+            if (_overlayActive)
+            {
+                return;
+            }
+            _overlayActive = true;
+
             var taskbarHWnd = User32.FindWindow("Shell_traywnd", "");
             var session = _hintProviderService.EnumHints(taskbarHWnd);
             if (session != null)
             {
                 var vm = new OverlayViewModel(session, _hintLabelService);
+                vm.Closed = () => _overlayActive = false;
                 _showOverlay(vm);
+            }
+            else
+            {
+                _overlayActive = false;
             }
         }
 

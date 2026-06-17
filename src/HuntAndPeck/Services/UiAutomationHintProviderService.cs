@@ -69,7 +69,7 @@ namespace HuntAndPeck.Services
 
             foreach (var element in elements)
             {
-                var boundingRectObject = element.CurrentBoundingRectangle;
+                var boundingRectObject = element.CachedBoundingRectangle;
                 if ((boundingRectObject.right > boundingRectObject.left) && (boundingRectObject.bottom > boundingRectObject.top))
                 {
                     var niceRect = new Rect(new Point(boundingRectObject.left, boundingRectObject.top), new Point(boundingRectObject.right, boundingRectObject.bottom));
@@ -112,7 +112,21 @@ namespace HuntAndPeck.Services
             var conditionOnScreen = _automation.CreatePropertyCondition(UIA_PropertyIds.UIA_IsOffscreenPropertyId, false);
             var condition = _automation.CreateAndCondition(enabledControlCondition, conditionOnScreen);
 
-            var elementArray = automationElement.FindAll(TreeScope.TreeScope_Descendants, condition);
+            // Batch all the data we need into a single cross-process call. Without this,
+            // each element's bounding rectangle and every pattern lookup is a separate
+            // (slow) COM round-trip, which is what made enumeration take ~1s.
+            var cacheRequest = _automation.CreateCacheRequest();
+            cacheRequest.AddProperty(UIA_PropertyIds.UIA_BoundingRectanglePropertyId);
+            cacheRequest.AddProperty(UIA_PropertyIds.UIA_ValueIsReadOnlyPropertyId);
+            cacheRequest.AddProperty(UIA_PropertyIds.UIA_RangeValueIsReadOnlyPropertyId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_InvokePatternId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_TogglePatternId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_SelectionItemPatternId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_ExpandCollapsePatternId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_ValuePatternId);
+            cacheRequest.AddPattern(UIA_PatternIds.UIA_RangeValuePatternId);
+
+            var elementArray = automationElement.FindAllBuildCache(TreeScope.TreeScope_Descendants, condition, cacheRequest);
             if (elementArray != null)
             {
                 for (var i = 0; i < elementArray.Length; ++i)
@@ -135,48 +149,75 @@ namespace HuntAndPeck.Services
         {
             try
             {
-                var invokePattern = (IUIAutomationInvokePattern)automationElement.GetCurrentPattern(UIA_PatternIds.UIA_InvokePatternId);
+                // Read patterns from the cache (populated by FindAllBuildCache) to avoid
+                // a cross-process COM call per pattern per element.
+                var invokePattern = (IUIAutomationInvokePattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_InvokePatternId);
                 if (invokePattern != null)
                 {
                     return new UiAutomationInvokeHint(owningWindow, invokePattern, hintBounds);
                 }
 
-                var togglePattern = (IUIAutomationTogglePattern)automationElement.GetCurrentPattern(UIA_PatternIds.UIA_TogglePatternId);
+                var togglePattern = (IUIAutomationTogglePattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_TogglePatternId);
                 if (togglePattern != null)
                 {
                     return new UiAutomationToggleHint(owningWindow, togglePattern, hintBounds);
                 }
-                
-                var selectPattern = (IUIAutomationSelectionItemPattern) automationElement.GetCurrentPattern(UIA_PatternIds.UIA_SelectionItemPatternId);
+
+                var selectPattern = (IUIAutomationSelectionItemPattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_SelectionItemPatternId);
                 if (selectPattern != null)
                 {
                     return new UiAutomationSelectHint(owningWindow, selectPattern, hintBounds);
                 }
 
-                var expandCollapsePattern = (IUIAutomationExpandCollapsePattern) automationElement.GetCurrentPattern(UIA_PatternIds.UIA_ExpandCollapsePatternId);
+                var expandCollapsePattern = (IUIAutomationExpandCollapsePattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_ExpandCollapsePatternId);
                 if (expandCollapsePattern != null)
                 {
                     return new UiAutomationExpandCollapseHint(owningWindow, expandCollapsePattern, hintBounds);
                 }
 
-                var valuePattern = (IUIAutomationValuePattern)automationElement.GetCurrentPattern(UIA_PatternIds.UIA_ValuePatternId);
-                if (valuePattern != null && valuePattern.CurrentIsReadOnly == 0)
+                var valuePattern = (IUIAutomationValuePattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_ValuePatternId);
+                if (valuePattern != null && !IsCachedReadOnly(automationElement, UIA_PropertyIds.UIA_ValueIsReadOnlyPropertyId))
                 {
                     return new UiAutomationFocusHint(owningWindow, automationElement, hintBounds);
                 }
 
-                var rangeValuePattern = (IUIAutomationRangeValuePattern) automationElement.GetCurrentPattern(UIA_PatternIds.UIA_RangeValuePatternId);
-                if (rangeValuePattern != null && rangeValuePattern.CurrentIsReadOnly == 0)
+                var rangeValuePattern = (IUIAutomationRangeValuePattern)automationElement.GetCachedPattern(UIA_PatternIds.UIA_RangeValuePatternId);
+                if (rangeValuePattern != null && !IsCachedReadOnly(automationElement, UIA_PropertyIds.UIA_RangeValueIsReadOnlyPropertyId))
                 {
                     return new UiAutomationFocusHint(owningWindow, automationElement, hintBounds);
                 }
-                
+
                 return null;
             }
             catch (Exception)
             {
                 // May have gone
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Reads a cached "is read only" boolean property, defaulting to read only (true)
+        /// if the value is missing so we don't offer a focus hint we can't use.
+        /// </summary>
+        private static bool IsCachedReadOnly(IUIAutomationElement element, int propertyId)
+        {
+            try
+            {
+                var value = element.GetCachedPropertyValue(propertyId);
+                if (value is bool b)
+                {
+                    return b;
+                }
+                if (value is int i)
+                {
+                    return i != 0;
+                }
+                return true;
+            }
+            catch (Exception)
+            {
+                return true;
             }
         }
 
@@ -197,7 +238,7 @@ namespace HuntAndPeck.Services
                 try
                 {
                     var pattern = automationElement.GetCurrentPattern(pn.Key);
-                    if(pattern != null)
+                    if (pattern != null)
                     {
                         programmaticNames.Add(pn.Value);
                     }

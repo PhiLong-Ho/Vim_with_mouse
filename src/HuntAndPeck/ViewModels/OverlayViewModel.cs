@@ -62,6 +62,11 @@ namespace HuntAndPeck.ViewModels
 
         public Action CloseOverlay { get; set; }
 
+        /// <summary>
+        /// Invoked when the overlay window has actually closed.
+        /// </summary>
+        public Action Closed { get; set; }
+
         public string MatchString
         {
             set
@@ -81,25 +86,35 @@ namespace HuntAndPeck.ViewModels
                 {
                     var selectedHint = matching.First().Hint;
 
-                    if ((User32.GetAsyncKeyState(User32.VK_RSHIFT) & 0x8000) != 0)
+                    try
                     {
-                        // Hold Right Shift: real right click (e.g. open a context menu).
-                        // Close the overlay first so the click lands on the target window.
-                        CloseOverlay?.Invoke();
-                        selectedHint.RightClick();
+                        if ((User32.GetAsyncKeyState(User32.VK_RSHIFT) & 0x8000) != 0)
+                        {
+                            // Hold Right Shift: real right click (e.g. open a context menu).
+                            // Close the overlay first so the click lands on the target window.
+                            CloseOverlay?.Invoke();
+                            selectedHint.RightClick();
+                        }
+                        else if ((User32.GetAsyncKeyState(User32.VK_LSHIFT) & 0x8000) != 0)
+                        {
+                            // Hold Left Shift: real left click. Works universally, including Electron/web
+                            // apps like Microsoft Teams where the UI Automation InvokePattern does nothing.
+                            // Close the overlay first so the click lands on the target window.
+                            CloseOverlay?.Invoke();
+                            selectedHint.Click();
+                        }
+                        else
+                        {
+                            // Default: UI Automation invoke.
+                            selectedHint.Invoke();
+                            CloseOverlay?.Invoke();
+                        }
                     }
-                    else if ((User32.GetAsyncKeyState(User32.VK_LSHIFT) & 0x8000) != 0)
+                    catch (Exception)
                     {
-                        // Hold Left Shift: real left click. Works universally, including Electron/web
-                        // apps like Microsoft Teams where the UI Automation InvokePattern does nothing.
-                        // Close the overlay first so the click lands on the target window.
-                        CloseOverlay?.Invoke();
-                        selectedHint.Click();
-                    }
-                    else
-                    {
-                        // Default: UI Automation invoke.
-                        selectedHint.Invoke();
+                        // The target element may have gone away or the action may not be
+                        // valid in its current state (e.g. a stale UI Automation element
+                        // throws COMException). Never let that crash the app -- just close.
                         CloseOverlay?.Invoke();
                     }
                 }
