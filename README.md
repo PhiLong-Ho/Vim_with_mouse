@@ -26,8 +26,8 @@ Find the application icon in tray, click right mouse button, select `Options`, t
 ## To use
 
 1. Launch the executable.
-2. With any window focused, press `Alt + ;`
-    - The tray can be highlighted with `Ctrl + ;`
+2. With any window focused, press `Ctrl + ;`
+    - The tray can be highlighted with `Ctrl + '`
 3. An overlay window will be displayed, type any of the hint characters you see.
 
 ## Interaction modes

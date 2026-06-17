@@ -8,9 +8,9 @@
     ShowInTaskbar="False"
     AllowsTransparency="True"
     Topmost="True"
-    FocusManager.FocusedElement="{Binding ElementName=MatchStringControl}"
+    ShowActivated="False"
     Loaded="OverlayView_OnLoaded"
-    PreviewKeyDown="OverlayView_OnPreviewKeyDown">
+    Closed="OverlayView_OnClosed">
     <local:ForegroundWindow.Resources>
         <Style x:Key="HintStyle" TargetType="TextBlock">
             <Setter Property="Background" Value="Yellow" />
@@ -25,7 +25,7 @@
         <SolidColorBrush Color="Transparent" />
     </local:ForegroundWindow.Background>
     <Grid x:Name="layoutGrid">
-        <TextBox x:Name="MatchStringControl" Text="{Binding MatchString, UpdateSourceTrigger=PropertyChanged, Mode=OneWayToSource}" Width="50" VerticalAlignment="Bottom" Background="Transparent" Foreground="White" />
+        <TextBox x:Name="MatchStringControl" IsReadOnly="True" IsHitTestVisible="False" Width="50" VerticalAlignment="Bottom" Background="Transparent" Foreground="White" />
         <ItemsControl ItemsSource="{Binding Hints}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>

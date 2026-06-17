@@ -15,15 +15,36 @@ namespace HuntAndPeck.Views
         private bool _closing;
         private bool _initialized;
 
+        /// <summary>
+        /// When false, the window never takes activation/focus and will not auto close
+        /// when deactivated. Used so popup menus and drop downs stay open while hints show.
+        /// </summary>
+        protected virtual bool StealFocus => true;
+
         protected override void OnRender(DrawingContext drawingContext)
         {
             if (!_initialized)
             {
-                // Always want this on top. SetForegroundWindow has a few conditions:
-                // https://msdn.microsoft.com/en-us/library/ms633539(VS.85).aspx
-                if (!User32.SetForegroundWindow(new WindowInteropHelper(this).Handle))
+                if (StealFocus)
                 {
-                    ForceForeground();
+                    // Always want this on top. SetForegroundWindow has a few conditions:
+                    // https://msdn.microsoft.com/en-us/library/ms633539(VS.85).aspx
+                    if (!User32.SetForegroundWindow(new WindowInteropHelper(this).Handle))
+                    {
+                        ForceForeground();
+                    }
+                }
+                else
+                {
+                    // Stay topmost but never steal focus, so the underlying menu/popup keeps focus
+                    var handle = new WindowInteropHelper(this).Handle;
+                    var exStyle = User32.GetWindowLong(handle, User32.GWL_EXSTYLE);
+                    User32.SetWindowLong(handle, User32.GWL_EXSTYLE, exStyle | User32.WS_EX_NOACTIVATE | User32.WS_EX_TOOLWINDOW);
+                    User32.SetWindowPos(
+                        handle,
+                        User32.HWND_TOPMOST,
+                        0, 0, 0, 0,
+                        User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE | User32.SWP_SHOWWINDOW);
                 }
                 _initialized = true;
             }
@@ -33,7 +54,7 @@ namespace HuntAndPeck.Views
         protected override void OnDeactivated(EventArgs e)
         {
             // We could have lost focus because we're already closing, make sure this doesn't call close twice
-            if (_initialized && !_closing)
+            if (StealFocus && _initialized && !_closing)
             {
                 Close();
             }

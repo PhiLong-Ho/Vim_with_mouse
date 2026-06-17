@@ -1,7 +1,9 @@
-﻿using System.ComponentModel;
+﻿using System;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
+using HuntAndPeck.NativeMethods;
+using HuntAndPeck.Services;
 using HuntAndPeck.ViewModels;
 
 namespace HuntAndPeck.Views
@@ -11,10 +13,20 @@ namespace HuntAndPeck.Views
     /// </summary>
     public partial class OverlayView
     {
+        private readonly KeyboardHookService _keyboardHook = new KeyboardHookService();
+        private DispatcherTimer _safetyTimer;
+        private string _input = string.Empty;
+
         public OverlayView()
         {
             InitializeComponent();
         }
+
+        /// <summary>
+        /// The overlay never steals focus, so the underlying popup/menu stays open.
+        /// Input is captured via a global low level keyboard hook instead.
+        /// </summary>
+        protected override bool StealFocus => false;
 
         private void OverlayView_OnLoaded(object sender, RoutedEventArgs e)
         {
@@ -23,7 +35,7 @@ namespace HuntAndPeck.Views
             var scaleY = m.M22;
 
             // scale the items for non-96 DPIs
-            layoutGrid.LayoutTransform = new ScaleTransform(1/scaleX, 1/scaleY);
+            layoutGrid.LayoutTransform = new ScaleTransform(1 / scaleX, 1 / scaleY);
 
             // resize the window for non-96 DPIs
             var vm = DataContext as OverlayViewModel;
@@ -31,14 +43,77 @@ namespace HuntAndPeck.Views
             Top = vm.Bounds.Top / scaleY;
             Width = vm.Bounds.Width / scaleX;
             Height = vm.Bounds.Height / scaleY;
+
+            _keyboardHook.KeyDown += KeyboardHook_KeyDown;
+            _keyboardHook.Install();
+
+            // Safety net: never leave the overlay (and its global hook) hanging around
+            _safetyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            _safetyTimer.Tick += (s, args) => Close();
+            _safetyTimer.Start();
         }
 
-        private void OverlayView_OnPreviewKeyDown(object sender, KeyEventArgs e)
+        private void OverlayView_OnClosed(object sender, EventArgs e)
         {
-            if (e.Key == Key.Escape)
+            _safetyTimer?.Stop();
+            _safetyTimer = null;
+            _keyboardHook.KeyDown -= KeyboardHook_KeyDown;
+            _keyboardHook.Dispose();
+        }
+
+        private void KeyboardHook_KeyDown(object sender, KeyboardHookService.KeyDownEventArgs e)
+        {
+            var vk = e.VirtualKeyCode;
+
+            if (vk == User32.VK_ESCAPE)
             {
-                Close();
+                e.Handled = true;
+                Dispatcher.BeginInvoke(new Action(Close));
+                return;
             }
+
+            if (vk == User32.VK_BACK)
+            {
+                e.Handled = true;
+                if (_input.Length > 0)
+                {
+                    _input = _input.Substring(0, _input.Length - 1);
+                }
+                UpdateInput();
+                return;
+            }
+
+            // Hint labels are letters (A-Z)
+            if (vk >= 'A' && vk <= 'Z')
+            {
+                e.Handled = true;
+                _input += (char)vk;
+                UpdateInput();
+                return;
+            }
+
+            // Anything else (shift, arrows, etc.) is left untouched and passes through.
+        }
+
+        private void UpdateInput()
+        {
+            var vm = DataContext as OverlayViewModel;
+            if (vm == null)
+            {
+                return;
+            }
+
+            // Run on the UI thread after the hook returns so input isn't blocked
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _safetyTimer?.Stop();
+                _safetyTimer?.Start();
+
+                MatchStringControl.Text = _input;
+
+                // Setting this may resolve a hint and trigger CloseOverlay
+                vm.MatchString = _input;
+            }));
         }
     }
 }
