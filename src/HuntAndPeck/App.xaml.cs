@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System;
+using System.Windows;
 using HuntAndPeck.ViewModels;
 using System.Linq;
 using System.Diagnostics;
@@ -60,28 +61,45 @@ namespace HuntAndPeck
             view.ShowDialog();
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             if (e.Args.Contains("/hint"))
             {
-                // support headless mode
-                var session = _hintProviderService.EnumHints();
-                var overlayWindow = new OverlayView()
+                // support headless mode — show overlay immediately, enumerate on background
+                var hWnd = User32.GetForegroundWindow();
+                if (hWnd != IntPtr.Zero)
                 {
-                    DataContext = new OverlayViewModel(session, _hintLabelService)
-                };
-                overlayWindow.Show();
+                    var rawBounds = new RECT();
+                    User32.GetWindowRect(hWnd, ref rawBounds);
+                    var vm = new OverlayViewModel((Rect)rawBounds);
+                    var overlayWindow = new OverlayView { DataContext = vm };
+                    overlayWindow.Show();
+
+                    var session = await _hintProviderService.EnumHintsAsync(hWnd);
+                    if (session != null)
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(() => vm.PopulateHints(session, _hintLabelService));
+                    }
+                }
             }
             else if (e.Args.Contains("/tray"))
             {
-                // support headless tray mode
+                // support headless tray mode — show overlay immediately, enumerate on background
                 var taskbarHWnd = User32.FindWindow("Shell_traywnd", "");
-                var session = _hintProviderService.EnumHints(taskbarHWnd);
-                var overlayWindow = new OverlayView()
+                if (taskbarHWnd != IntPtr.Zero)
                 {
-                    DataContext = new OverlayViewModel(session, _hintLabelService)
-                };
-                overlayWindow.Show();
+                    var rawBounds = new RECT();
+                    User32.GetWindowRect(taskbarHWnd, ref rawBounds);
+                    var vm = new OverlayViewModel((Rect)rawBounds);
+                    var overlayWindow = new OverlayView { DataContext = vm };
+                    overlayWindow.Show();
+
+                    var session = await _hintProviderService.EnumHintsAsync(taskbarHWnd);
+                    if (session != null)
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(() => vm.PopulateHints(session, _hintLabelService));
+                    }
+                }
             }
             else
             {

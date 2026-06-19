@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using HuntAndPeck.NativeMethods;
 using HuntAndPeck.Services.Interfaces;
 using Application = System.Windows.Application;
@@ -69,7 +72,7 @@ namespace HuntAndPeck.ViewModels
         /// </summary>
         private bool _overlayActive;
 
-        private void _keyListener_OnHotKeyActivated(object sender, EventArgs e)
+        private async void _keyListener_OnHotKeyActivated(object sender, EventArgs e)
         {
             if (_overlayActive)
             {
@@ -77,20 +80,44 @@ namespace HuntAndPeck.ViewModels
             }
             _overlayActive = true;
 
-            var session = _hintProviderService.EnumHints();
+            var hWnd = User32.GetForegroundWindow();
+            if (hWnd == IntPtr.Zero)
+            {
+                _overlayActive = false;
+                return;
+            }
+
+            // Get window bounds (fast, no COM) and show the overlay immediately
+            // with a loading indicator while hints are enumerated.
+            var rawBounds = new RECT();
+            User32.GetWindowRect(hWnd, ref rawBounds);
+            Rect windowBounds = rawBounds;
+
+            var vm = new OverlayViewModel(windowBounds);
+            vm.Closed = () => _overlayActive = false;
+            _showOverlay(vm);
+
+            // Enumerate hints on a background thread to keep the UI responsive
+            var session = await _hintProviderService.EnumHintsAsync(hWnd);
             if (session != null)
             {
-                var vm = new OverlayViewModel(session, _hintLabelService);
-                vm.Closed = () => _overlayActive = false;
-                _showOverlay(vm);
+                // Update the already-visible overlay on the UI thread
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    vm.PopulateHints(session, _hintLabelService);
+                });
             }
             else
             {
-                _overlayActive = false;
+                // Window may have disappeared — close the overlay
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    vm.CloseOverlay?.Invoke();
+                });
             }
         }
 
-        private void _keyListener_OnTaskbarHotKeyActivated(object sender, EventArgs e)
+        private async void _keyListener_OnTaskbarHotKeyActivated(object sender, EventArgs e)
         {
             if (_overlayActive)
             {
@@ -99,16 +126,36 @@ namespace HuntAndPeck.ViewModels
             _overlayActive = true;
 
             var taskbarHWnd = User32.FindWindow("Shell_traywnd", "");
-            var session = _hintProviderService.EnumHints(taskbarHWnd);
+            if (taskbarHWnd == IntPtr.Zero)
+            {
+                _overlayActive = false;
+                return;
+            }
+
+            // Get window bounds (fast) and show overlay with loading indicator
+            var rawBounds = new RECT();
+            User32.GetWindowRect(taskbarHWnd, ref rawBounds);
+            Rect windowBounds = rawBounds;
+
+            var vm = new OverlayViewModel(windowBounds);
+            vm.Closed = () => _overlayActive = false;
+            _showOverlay(vm);
+
+            // Enumerate hints on background thread
+            var session = await _hintProviderService.EnumHintsAsync(taskbarHWnd);
             if (session != null)
             {
-                var vm = new OverlayViewModel(session, _hintLabelService);
-                vm.Closed = () => _overlayActive = false;
-                _showOverlay(vm);
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    vm.PopulateHints(session, _hintLabelService);
+                });
             }
             else
             {
-                _overlayActive = false;
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    vm.CloseOverlay?.Invoke();
+                });
             }
         }
 

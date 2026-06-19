@@ -12,6 +12,7 @@
     Loaded="OverlayView_OnLoaded"
     Closed="OverlayView_OnClosed">
     <local:ForegroundWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <Style x:Key="HintStyle" TargetType="TextBlock">
             <Setter Property="Background" Value="Yellow" />
             <Style.Triggers>
@@ -26,6 +27,26 @@
     </local:ForegroundWindow.Background>
     <Grid x:Name="layoutGrid">
         <TextBox x:Name="MatchStringControl" IsReadOnly="True" IsHitTestVisible="False" Width="50" VerticalAlignment="Bottom" Background="Transparent" Foreground="White" />
+        <!-- Loading indicator: shown while hints are being enumerated on a background thread -->
+        <TextBlock x:Name="LoadingIndicator"
+                   Text="Generating hints…"
+                   Foreground="White"
+                   FontSize="16"
+                   FontFamily="Segoe UI, Helvetica, Arial"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock.Triggers>
+                <EventTrigger RoutedEvent="TextBlock.Loaded">
+                    <BeginStoryboard>
+                        <Storyboard AutoReverse="True" RepeatBehavior="Forever">
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             From="1.0" To="0.3" Duration="0:0:0.6" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </TextBlock.Triggers>
+        </TextBlock>
         <ItemsControl ItemsSource="{Binding Hints}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>

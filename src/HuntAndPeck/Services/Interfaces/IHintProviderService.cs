@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using HuntAndPeck.Models;
 
 namespace HuntAndPeck.Services.Interfaces
@@ -15,5 +16,10 @@ namespace HuntAndPeck.Services.Interfaces
         HintSession EnumHints();
 
         HintSession EnumHints(IntPtr handle);
+
+        /// <summary>
+        /// Enumerates hints on a background thread so the UI stays responsive.
+        /// </summary>
+        Task<HintSession> EnumHintsAsync(IntPtr hWnd);
     }
 }

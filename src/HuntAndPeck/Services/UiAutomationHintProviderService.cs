@@ -6,14 +6,29 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
-using UIAutomationClient;
+using Interop.UIAutomationClient;
 
 namespace HuntAndPeck.Services
 {
     internal class UiAutomationHintProviderService : IHintProviderService, IDebugHintProviderService
     {
-        private readonly IUIAutomation _automation = new CUIAutomation();
+        private readonly IUIAutomation _automation;
+
+        public UiAutomationHintProviderService()
+        {
+            _automation = new CUIAutomation();
+        }
+
+        /// <summary>
+        /// Private constructor used by <see cref="EnumHintsAsync"/> to create a
+        /// service whose COM object lives on the background thread.
+        /// </summary>
+        private UiAutomationHintProviderService(IUIAutomation automation)
+        {
+            _automation = automation;
+        }
 
         public HintSession EnumHints()
         {
@@ -34,6 +49,22 @@ namespace HuntAndPeck.Services
 
             Debug.WriteLine("Enumeration of hints took {0} ms", sw.ElapsedMilliseconds);
             return session;
+        }
+
+        /// <summary>
+        /// Enumerates hints on a background thread so the UI stays responsive.
+        /// Creates a fresh CUIAutomation instance on the worker thread to avoid
+        /// COM apartment marshaling issues.
+        /// </summary>
+        public Task<HintSession> EnumHintsAsync(IntPtr hWnd)
+        {
+            return Task.Run(() =>
+            {
+                // Create a fresh automation object on this background thread
+                // so COM stays in the right apartment.
+                var service = new UiAutomationHintProviderService(new CUIAutomation());
+                return service.EnumHints(hWnd);
+            });
         }
 
         public HintSession EnumDebugHints()

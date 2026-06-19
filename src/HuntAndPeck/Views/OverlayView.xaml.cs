@@ -72,6 +72,14 @@ namespace HuntAndPeck.Views
                 return;
             }
 
+            // While hints are still being generated, ignore all other keys
+            var vm = DataContext as OverlayViewModel;
+            if (vm != null && vm.IsLoading)
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (vk == User32.VK_BACK)
             {
                 e.Handled = true;

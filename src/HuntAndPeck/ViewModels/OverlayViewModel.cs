@@ -12,13 +12,34 @@ namespace HuntAndPeck.ViewModels
     {
         private Rect _bounds;
         private ObservableCollection<HintViewModel> _hints = new ObservableCollection<HintViewModel>();
+        private bool _isLoading;
+
+        /// <summary>
+        /// Creates an overlay in the loading state — the overlay appears immediately
+        /// with a "Generating hints…" indicator while enumeration runs on a background
+        /// thread. Call <see cref="PopulateHints"/> when the session is ready.
+        /// </summary>
+        /// <param name="bounds">The owning window bounds (cheap to get)</param>
+        public OverlayViewModel(Rect bounds)
+        {
+            _bounds = bounds;
+            _isLoading = true;
+        }
 
         public OverlayViewModel(
             HintSession session,
             IHintLabelService hintLabelService)
         {
             _bounds = session.OwningWindowBounds;
+            PopulateHints(session, hintLabelService);
+        }
 
+        /// <summary>
+        /// Fills in the hint labels once the session has been enumerated.
+        /// Call on the UI thread.
+        /// </summary>
+        public void PopulateHints(HintSession session, IHintLabelService hintLabelService)
+        {
             var labels = hintLabelService.GetHintStrings(session.Hints.Count());
             for (int i = 0; i < labels.Count; ++i)
             {
@@ -29,6 +50,7 @@ namespace HuntAndPeck.ViewModels
                     Active = false
                 });
             }
+            IsLoading = false;
         }
 
         /// <summary>
@@ -58,6 +80,16 @@ namespace HuntAndPeck.ViewModels
                 _hints = value;
                 NotifyOfPropertyChange();
             }
+        }
+
+        /// <summary>
+        /// True while hints are being enumerated on a background thread.
+        /// The overlay shows a loading indicator instead of hint labels.
+        /// </summary>
+        public bool IsLoading
+        {
+            get { return _isLoading; }
+            set { _isLoading = value; NotifyOfPropertyChange(); }
         }
 
         public Action CloseOverlay { get; set; }
